@@ -31,3 +31,6 @@ Thumbs.db
 *.swo
 *~
 
+node_modules/
+database.db
+client/node_modules/
