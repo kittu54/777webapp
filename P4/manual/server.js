@@ -1,25 +1,34 @@
+require('dotenv').config();
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
+const validator = require('validator');
 
 const app = express();
-const PORT = 3001; // Backend runs on port 3001
-const SECRET_KEY = 'super_secret_key_for_assignment'; 
+const PORT = 3001;
+const SECRET_KEY = process.env.JWT_SECRET || 'fallback_unsafe_key';
 
 app.use(express.json());
 app.use(cors());
 
+// --- SECURITY: Rate Limiter ---
+// Blocks brute-force attacks: Max 5 login attempts per 15 minutes
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, 
+    max: 5, 
+    message: "Too many login attempts, please try again later."
+});
+
 // --- DATABASE SETUP ---
 const db = new sqlite3.Database('./database.db', (err) => {
     if (err) console.error(err.message);
-    console.log('Connected to the SQLite database.');
+    console.log('Connected to SQLite database.');
 });
 
-// Create Tables and Seed Admin
 db.serialize(() => {
-    // Users Table
     db.run(`CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE,
@@ -27,7 +36,6 @@ db.serialize(() => {
         role TEXT
     )`);
 
-    // Articles Table
     db.run(`CREATE TABLE IF NOT EXISTS articles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         url TEXT,
@@ -36,15 +44,13 @@ db.serialize(() => {
         FOREIGN KEY(user_id) REFERENCES users(id)
     )`);
 
-    // Create Admin Account if it doesn't exist
-    const adminQuery = "SELECT * FROM users WHERE username = ?";
-    db.get(adminQuery, ['admin'], async (err, row) => {
+    // Seed Admin
+    db.get("SELECT * FROM users WHERE username = ?", ['admin'], async (err, row) => {
         if (!row) {
-            // Hash the password 'admin'
             const hashedPassword = await bcrypt.hash('admin', 10);
             db.run("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", 
                 ['admin', hashedPassword, 'admin']);
-            console.log("Admin account created (user: admin, pass: admin)");
+            console.log("Admin account created.");
         }
     });
 });
@@ -64,9 +70,19 @@ const authenticateToken = (req, res, next) => {
 
 // --- ROUTES ---
 
-// 1. Register
+// 1. Register (With Password Strength Check)
 app.post('/register', async (req, res) => {
     const { username, password } = req.body;
+    
+    if (!username || !password) {
+        return res.status(400).json({ error: "All fields are required" });
+    }
+    
+    // OWASP: Enforce password complexity
+    if (password.length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters" });
+    }
+
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
         db.run("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", 
@@ -80,22 +96,27 @@ app.post('/register', async (req, res) => {
     }
 });
 
-// 2. Login
-app.post('/login', (req, res) => {
+// 2. Login (With Rate Limiting)
+app.post('/login', loginLimiter, (req, res) => {
     const { username, password } = req.body;
     db.get("SELECT * FROM users WHERE username = ?", [username], async (err, user) => {
-        if (!user) return res.status(400).send('User not found');
+        if (!user) return res.status(400).send('Invalid credentials');
         
         if (await bcrypt.compare(password, user.password)) {
-            const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, SECRET_KEY);
+            // OWASP: Token expires in 1 hour
+            const token = jwt.sign(
+                { id: user.id, username: user.username, role: user.role }, 
+                SECRET_KEY, 
+                { expiresIn: '1h' }
+            );
             res.json({ token, username: user.username, role: user.role, id: user.id });
         } else {
-            res.send('Not Allowed');
+            res.status(400).send('Invalid credentials');
         }
     });
 });
 
-// 3. Get All Articles
+// 3. Get Articles
 app.get('/articles', (req, res) => {
     db.all("SELECT * FROM articles", [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -103,9 +124,15 @@ app.get('/articles', (req, res) => {
     });
 });
 
-// 4. Post Article (Protected)
+// 4. Post Article (With URL Validation against XSS)
 app.post('/articles', authenticateToken, (req, res) => {
     const { url } = req.body;
+
+    // OWASP: Validate Input (Prevent XSS/Injection)
+    if (!validator.isURL(url, { protocols: ['http','https'], require_protocol: true })) {
+        return res.status(400).json({ error: "Invalid URL. Must start with http:// or https://" });
+    }
+
     db.run("INSERT INTO articles (url, user_id, username) VALUES (?, ?, ?)", 
         [url, req.user.id, req.user.username], 
         function(err) {
@@ -114,15 +141,13 @@ app.post('/articles', authenticateToken, (req, res) => {
         });
 });
 
-// 5. Delete Article (Protected + Admin Logic)
+// 5. Delete Article
 app.delete('/articles/:id', authenticateToken, (req, res) => {
     const articleId = req.params.id;
     
-    // Check if article exists and who owns it
     db.get("SELECT * FROM articles WHERE id = ?", [articleId], (err, article) => {
         if (!article) return res.status(404).json({ error: "Article not found" });
 
-        // ALLOW if: Current user is Admin OR Current user owns the article
         if (req.user.role === 'admin' || req.user.id === article.user_id) {
             db.run("DELETE FROM articles WHERE id = ?", [articleId], (err) => {
                 if (err) return res.status(500).json({ error: err.message });
