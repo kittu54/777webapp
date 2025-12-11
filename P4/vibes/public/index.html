@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Article Sharing App</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Article Sharing</h1>
+      <div id="user-info" class="hidden">
+        <span id="username-display"></span>
+        <span id="role-badge" class="badge"></span>
+        <button id="logout-btn" class="btn btn-secondary">Logout</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="auth-section">
+        <div class="auth-container">
+          <div class="tabs">
+            <button class="tab active" data-tab="login">Login</button>
+            <button class="tab" data-tab="register">Register</button>
+          </div>
+
+          <form id="login-form" class="auth-form">
+            <h2>Welcome Back</h2>
+            <div class="form-group">
+              <label for="login-username">Username</label>
+              <input type="text" id="login-username" placeholder="Enter your username" required>
+            </div>
+            <div class="form-group">
+              <label for="login-password">Password</label>
+              <input type="password" id="login-password" placeholder="Enter your password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Login</button>
+            <div id="login-error" class="error-message"></div>
+          </form>
+
+          <form id="register-form" class="auth-form hidden">
+            <h2>Create Account</h2>
+            <div class="form-group">
+              <label for="register-username">Username</label>
+              <input type="text" id="register-username" placeholder="Choose a username" required>
+            </div>
+            <div class="form-group">
+              <label for="register-password">Password</label>
+              <input type="password" id="register-password" placeholder="Choose a password" required>
+            </div>
+            <div class="form-group">
+              <label for="register-confirm">Confirm Password</label>
+              <input type="password" id="register-confirm" placeholder="Confirm your password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Register</button>
+            <div id="register-error" class="error-message"></div>
+          </form>
+        </div>
+      </section>
+
+      <section id="dashboard-section" class="hidden">
+        <div class="dashboard-header">
+          <h2>Your Dashboard</h2>
+          <p>Share interesting articles with the community</p>
+        </div>
+
+        <div class="add-article-card">
+          <h3>Share New Article</h3>
+          <form id="article-form">
+            <div class="form-group">
+              <input type="url" id="article-url" placeholder="Paste article URL here..." required>
+              <button type="submit" class="btn btn-primary">Share Article</button>
+            </div>
+            <div id="article-error" class="error-message"></div>
+            <div id="article-success" class="success-message"></div>
+          </form>
+        </div>
+
+        <div class="articles-section">
+          <h3>Shared Articles</h3>
+          <div id="articles-list">
+            <div class="loading">Loading articles...</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Article Sharing App - Share and discover great content</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
